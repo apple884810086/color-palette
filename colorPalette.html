@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单色保留调色盘</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f6f7;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container {
+            background: #fff;
+            padding: 30px 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            text-align: center;
+            max-width: 900px;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .image-wrapper {
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+            background: #f9f9f9;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: none;
+        }
+
+        .tip {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .palette {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            max-width: 240px;
+            margin-bottom: 20px;
+        }
+
+        .color-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .color-btn.active {
+            border-color: #333;
+            transform: scale(1.12);
+            box-shadow: 0 0 8px rgba(0,0,0,0.15);
+        }
+
+        /* 各颜色按钮样式 */
+        .btn-white { background: #ffffff; border-color: #e0e0e0; }
+        .btn-red { background: #e63946; }
+        .btn-orange { background: #f4a261; }
+        .btn-yellow { background: #e9c46a; }
+        .btn-green { background: #2a9d8f; }
+        .btn-blue { background: #264653; }
+        .btn-colorful {
+            background: linear-gradient(90deg, #e63946, #f4a261, #e9c46a, #2a9d8f, #264653);
+            width: 46px;
+            height: 46px;
+            border-color: #999;
+        }
+
+        .upload-btn {
+            display: inline-block;
+            padding: 10px 24px;
+            background: #2a9d8f;
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 15px;
+        }
+
+        .upload-btn:hover {
+            background: #218678;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🎨 单色保留调色盘（上传台阶图使用）</h2>
+        <div class="image-wrapper">
+            <span class="tip" id="uploadTip">请先上传你的图片</span>
+            <canvas id="imgCanvas"></canvas>
+        </div>
+        <div class="palette">
+            <button class="color-btn btn-white" data-color="white" title="保留白色">白</button>
+            <button class="color-btn btn-red" data-color="red" title="保留红色">红</button>
+            <button class="color-btn btn-orange" data-color="orange" title="保留橙色">橙</button>
+            <button class="color-btn btn-yellow" data-color="yellow" title="保留黄色">黄</button>
+            <button class="color-btn btn-green" data-color="green" title="保留绿色">绿</button>
+            <button class="color-btn btn-blue" data-color="blue" title="保留蓝色">蓝</button>
+            <button class="color-btn btn-colorful active" data-color="colorful" title="显示原图">彩</button>
+        </div>
+        <label for="imgUpload" class="upload-btn">选择本地图片</label>
+        <input type="file" id="imgUpload" accept="image/*">
+    </div>
+
+    <script>
+        // 初始化变量
+        const canvas = document.getElementById('imgCanvas');
+        const ctx = canvas.getContext('2d');
+        const uploadTip = document.getElementById('uploadTip');
+        const uploadInput = document.getElementById('imgUpload');
+        let originalImageData = null; // 存储原始图片像素数据
+
+        // RGB转HSV函数（H:0-360, S:0-100, V:0-100）
+        function rgbToHsv(r, g, b) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            let h, s, v = max;
+            const d = max - min;
+            s = max === 0 ? 0 : d / max;
+            if (max === min) {
+                h = 0;
+            } else {
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return [h * 360, s * 100, v * 100];
+        }
+
+        // 图片上传处理
+        uploadInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    // 设置canvas尺寸为图片原始尺寸
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    // 绘制图片到canvas
+                    ctx.drawImage(img, 0, 0);
+                    // 保存原始像素数据
+                    originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    // 显示canvas，隐藏提示
+                    canvas.style.display = 'block';
+                    uploadTip.style.display = 'none';
+                    document.querySelector('.image-wrapper').style.border = 'none';
+                    // 默认切换到彩色
+                    document.querySelector('.btn-colorful').click();
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 颜色筛选规则
+        const colorRules = {
+            white: (h, s, v) => s < 10, // 饱和度低于10%视为白色/灰色
+            red: (h, s, v) => (h >= 0 && h <= 15) || (h >= 345 && h <= 360),
+            orange: (h, s, v) => h >= 15 && h <= 45,
+            yellow: (h, s, v) => h >= 45 && h <= 75,
+            green: (h, s, v) => h >= 75 && h <= 165,
+            blue: (h, s, v) => h >= 225 && h <= 285,
+            colorful: (h, s, v) => true // 彩色模式保留所有像素
+        };
+
+        // 颜色按钮点击事件
+        const colorBtns = document.querySelectorAll('.color-btn');
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 无原始图片时提示
+                if (!originalImageData) {
+                    alert('请先上传图片再操作');
+                    return;
+                }
+                // 更新按钮激活状态
+                colorBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // 获取当前选中的颜色规则
+                const targetColor = this.dataset.color;
+                const rule = colorRules[targetColor];
+
+                // 复制原始像素数据（避免修改原始数据）
+                const imageData = new ImageData(
+                    new Uint8ClampedArray(originalImageData.data),
+                    originalImageData.width,
+                    originalImageData.height
+                );
+                const data = imageData.data;
+
+                // 遍历所有像素进行处理
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const a = data[i + 3];
+
+                    // 透明像素跳过
+                    if (a === 0) continue;
+
+                    // 转换为HSV判断是否在目标颜色范围内
+                    const [h, s, v] = rgbToHsv(r, g, b);
+                    const isTarget = rule(h, s, v);
+
+                    // 非目标颜色转为灰度
+                    if (!isTarget) {
+                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        data[i] = data[i + 1] = data[i + 2] = gray;
+                    }
+                }
+
+                // 将处理后的像素数据画回canvas
+                ctx.putImageData(imageData, 0, 0);
+            });
+        });
+    </script>
+</body>
+</html>
